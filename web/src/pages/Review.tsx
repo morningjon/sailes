@@ -489,7 +489,7 @@ function ProposalCard({
   const approve = useMutation({
     mutationFn: () => post<Proposal>(`/proposals/${p.id}/approve`, editing ? { payload: draft } : {}),
     onSuccess: () => {
-      toast(isEmail ? "Approved. The email is queued in the Outbox." : `Approved: ${p.title}`);
+      toast(isEmail ? "Approved. It goes to your Outlook drafts on the next run." : `Approved: ${p.title}`);
       qc.invalidateQueries();
     },
     onError: (e: Error) => toast(e.message, true),
@@ -584,7 +584,7 @@ function ProposalCard({
             <>
               <button className="btn approve" disabled={busy} onClick={() => approve.mutate()}>
                 <Check size={16} />
-                {editing ? "Save and approve" : isEmail ? "Approve and send" : "Approve"}
+                {editing ? "Save and approve" : isEmail ? "Approve email" : "Approve"}
               </button>
               {editing ? (
                 <button
@@ -803,7 +803,7 @@ export function ReviewPage() {
               {!q.isLoading && items.length === 0 && (
                 <div className="table-card">
                   <Empty title="You're all caught up">
-                    New suggestions appear here as sAIles reads your conversations. Connect Outlook, Slack and Teams under Connections.
+                    New suggestions arrive after each daily run. You can see when the last one came in under Connections.
                   </Empty>
                 </div>
               )}

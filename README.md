@@ -17,13 +17,9 @@ Early alpha. This first stage is the CRM itself and the approval loop:
 - **Outbox**: approved emails wait here to be sent from your own mailbox
 - Sign-in with server-side sessions; your data stays in your own Postgres
 
-Coming next, in order:
+**Connectors, for now: Claude.** A scheduled Claude task reads your Outlook, Teams and Slack through Claude's own connectors, does the AI work (matching, suggestions, drafts in your voice), and swaps files with sAIles through a shared folder kept in sync by Syncthing. Approved emails come back to you as threaded Outlook drafts. See [the daily run](docs/claude-daily-run.md) and [the bridge format](docs/bridge.md).
 
-1. Outlook connector (Microsoft Graph): read mail, link it to records, send approved drafts
-2. The AI pipeline: turn each new conversation into suggestions (Claude by default, local models pluggable)
-3. Tone of voice: learn your writing style from your sent mail, and from the edits you make to drafts
-4. Follow-up engine: spot threads that have gone quiet and promises you've made
-5. Slack, then Teams chats and meeting transcripts
+Coming later: native Outlook (Microsoft Graph), Slack and Teams connectors and a built-in AI pipeline with local model support, for people running sAIles without Claude. They'll feed the same import format.
 
 | Pipeline board | Record page |
 | --- | --- |
@@ -43,6 +39,10 @@ docker compose up -d --build
 Open http://localhost:8080 and create your account. The first account on a server becomes its admin.
 
 To try it with fictional demo data, set `SAILES_SEED_DEMO=true` in `.env` before the first start. Set `SAILES_ADMIN_NAME` too and the demo email drafts are signed with your name.
+
+### The shared folder
+
+sAIles reads and writes the bridge folder at `SAILES_BRIDGE_HOST_DIR` (default `./bridge`). Point it at the server side of a Syncthing folder that's shared with the machine running Claude, and set `SAILES_UID`/`SAILES_GID` to the user that owns it (`id` shows them). sAIles creates the layout and a `README.md` describing the format on start.
 
 If you put sAIles behind HTTPS (Caddy, Traefik, nginx), set `SAILES_SECURE_COOKIES=true`.
 
@@ -65,21 +65,22 @@ Other server commands: `cargo run -- migrate` applies migrations only, `cargo ru
 ## How it fits together
 
 ```
- Outlook / Slack / Teams ──▶ connectors ──▶ activities (timeline)
-                                               │
-                                               ▼
-                                     AI extraction pipeline
-                                               │
-                                               ▼
-                                 proposals (the Review queue)
-                                               │  you approve
-                                               ▼
-                        contacts, companies, deals, tasks, outbox
+ Outlook, Teams, Slack
+        │  Claude's connectors
+        ▼
+ Claude daily run ──── shared folder (Syncthing) ────▶ sAIles
+        ▲                                               │
+        │                                               ▼
+        │                              activities + suggestions (Review)
+        │                                               │  you approve
+        │                                               ▼
+        └──── Outlook drafts ◀──── outbox ◀──── contacts, companies, deals, tasks
 ```
 
 - `crates/server`: Rust (Axum, SQLx, Postgres). REST API under `/api`, serves the dashboard.
   - `fields.rs`: one whitelisted field spec per object, shared by the API and by approved proposals
   - `routes/proposals.rs`: the approval queue and how each kind of suggestion is applied
+  - `bridge.rs`: the shared folder (imports, context export, outbox hand-off) and `POST /api/import`
   - `migrations/`: the schema
 - `web`: React, TypeScript and Vite. The dashboard.
 

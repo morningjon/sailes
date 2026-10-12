@@ -297,7 +297,8 @@ pub async fn edit(
 ) -> AppResult<Json<ProposalView>> {
     as_object(b.payload.clone())?;
     let res = sqlx::query(
-        "update proposals set payload = $2, edited = true where id = $1 and status = 'pending'",
+        "update proposals set original_payload = coalesce(original_payload, payload), payload = $2, edited = true
+         where id = $1 and status = 'pending'",
     )
     .bind(id)
     .bind(&b.payload)
@@ -355,7 +356,9 @@ async fn approve_one(
     let payload = as_object(edited.unwrap_or_else(|| row.payload.clone()))?;
     let result_id = apply(&mut tx, &row, payload.clone()).await?;
     sqlx::query(
-        "update proposals set status = 'approved', payload = $2, edited = edited or $3, result_id = $4,
+        "update proposals set status = 'approved',
+            original_payload = case when $3 then coalesce(original_payload, payload) else original_payload end,
+            payload = $2, edited = edited or $3, result_id = $4,
             decided_by = $5, decided_at = now(), error = null where id = $1",
     )
     .bind(id)
@@ -676,6 +679,20 @@ async fn apply(
                     .and_then(Value::as_str)
                     .and_then(|s| Uuid::parse_str(s).ok())
             };
+            // Reply in the thread of the message that prompted this, unless told otherwise.
+            let in_reply_to: Option<String> = match map.get("in_reply_to").and_then(Value::as_str) {
+                Some(s) if !s.trim().is_empty() => Some(s.trim().to_string()),
+                _ => match row.source_activity_id {
+                    Some(aid) => sqlx::query_scalar(
+                        "select external_id from activities where id = $1 and kind = 'email'",
+                    )
+                    .bind(aid)
+                    .fetch_optional(&mut *conn)
+                    .await?
+                    .flatten(),
+                    None => None,
+                },
+            };
             let contact_id = parse_id("contact_id").or_else(|| {
                 (row.target_type.as_deref() == Some("contact"))
                     .then_some(row.target_id)
@@ -695,7 +712,7 @@ async fn apply(
             .bind(json!(cc))
             .bind(map.get("subject").and_then(Value::as_str))
             .bind(&body)
-            .bind(map.get("in_reply_to").and_then(Value::as_str))
+            .bind(&in_reply_to)
             .bind(contact_id)
             .bind(deal_id)
             .fetch_one(&mut *conn)
@@ -712,6 +729,7 @@ pub async fn outbox(State(state): State<AppState>) -> AppResult<Json<Vec<Value>>
     let rows: Vec<Value> = sqlx::query_scalar(
         "select jsonb_build_object('id', o.id, 'channel', o.channel, 'recipients', o.recipients, 'cc', o.cc,
             'subject', o.subject, 'body', o.body, 'status', o.status, 'error', o.error,
+            'external_url', o.external_url, 'handed_off_at', o.handed_off_at,
             'contact_id', o.contact_id, 'contact_name', nullif(trim(c.first_name || ' ' || c.last_name), ''),
             'deal_id', o.deal_id, 'deal_name', d.name, 'created_at', o.created_at, 'sent_at', o.sent_at)
          from outbox o left join contacts c on c.id = o.contact_id left join deals d on d.id = o.deal_id
@@ -732,6 +750,22 @@ pub async fn cancel_outbox(
         .await?;
     if res.rows_affected() == 0 {
         return Err(AppError::bad("Only queued emails can be cancelled."));
+    }
+    Ok(Json(json!({ "ok": true })))
+}
+
+pub async fn retry_outbox(
+    State(state): State<AppState>,
+    Path(id): Path<Uuid>,
+) -> AppResult<Json<Value>> {
+    let res = sqlx::query(
+        "update outbox set status = 'queued', error = null where id = $1 and status = 'failed'",
+    )
+    .bind(id)
+    .execute(&state.pool)
+    .await?;
+    if res.rows_affected() == 0 {
+        return Err(AppError::bad("Only failed emails can be retried."));
     }
     Ok(Json(json!({ "ok": true })))
 }

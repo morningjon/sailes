@@ -6,7 +6,8 @@ Self-hosted, GPL CRM that fills itself in from email, Slack and Teams via an app
 
 - Commit straight to `main` and push. No feature branches or pull requests for this repo.
 - User-facing copy: plain, sentence case, British English, no em dashes.
-- Connectors and the AI must never write CRM tables directly. They create rows in `proposals`; `routes/proposals.rs::apply` is the only path from a suggestion to a record.
+- Connectors and the AI must never write CRM tables directly. They create rows in `proposals` (via the bridge folder or `POST /api/import`); `routes/proposals.rs::apply` is the only path from a suggestion to a record.
+- The Claude daily run (docs/claude-daily-run.md) is the connector for now. Keep it, docs/bridge.md and bridge.rs in step.
 - Keep data on the user's infrastructure: no third-party CDNs or font services in the dashboard (fonts are self-hosted via @fontsource).
 
 ## Layout
@@ -32,7 +33,7 @@ Updates need `target_type` + `target_id`. `source_activity_id` gets linked to th
 
 ## Roadmap
 
-1. Outlook connector (Graph): ingest mail into `activities`, send `outbox` items
+1. Native connectors (Graph, Slack) feeding the same import format, for installs without Claude
 2. AI pipeline: activity in, proposals out; provider trait with Claude default, local model option
 3. Tone-of-voice profile from sent mail plus draft edits (`proposals.edited`, `feedback`)
 4. Follow-up engine (quiet threads, promised actions)

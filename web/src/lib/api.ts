@@ -251,8 +251,9 @@ export interface OutboxItem {
   cc: string[];
   subject: string | null;
   body: string;
-  status: "queued" | "sent" | "failed";
+  status: "queued" | "drafted" | "sent" | "failed";
   error: string | null;
+  external_url: string | null;
   contact_id: string | null;
   contact_name: string | null;
   deal_id: string | null;

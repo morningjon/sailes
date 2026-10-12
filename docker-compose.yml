@@ -18,6 +18,8 @@ services:
     build: .
     image: sailes:latest
     restart: unless-stopped
+    # Run as the user that owns your Syncthing folder so both can read and write the bridge files.
+    user: "${SAILES_UID:-10001}:${SAILES_GID:-10001}"
     depends_on:
       db:
         condition: service_healthy
@@ -28,6 +30,9 @@ services:
       SAILES_ADMIN_NAME: ${SAILES_ADMIN_NAME:-}
       SAILES_SEED_DEMO: ${SAILES_SEED_DEMO:-false}
       SAILES_SECURE_COOKIES: ${SAILES_SECURE_COOKIES:-false}
+      SAILES_BRIDGE_DIR: /bridge
+    volumes:
+      - ${SAILES_BRIDGE_HOST_DIR:-./bridge}:/bridge
     ports:
       - "${SAILES_PORT:-8080}:8080"
 

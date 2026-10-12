@@ -1,6 +1,7 @@
 //! sAIles server: REST API plus the dashboard's static files.
 
 mod auth;
+mod bridge;
 mod config;
 mod error;
 mod fields;
@@ -79,6 +80,10 @@ fn api_router(state: AppState) -> Router<AppState> {
         .route("/proposals/{id}/reject", post(proposals::reject))
         .route("/outbox", get(proposals::outbox))
         .route("/outbox/{id}", delete(proposals::cancel_outbox))
+        .route("/outbox/{id}/retry", post(proposals::retry_outbox))
+        .route("/import", post(bridge::import_api))
+        .route("/bridge", get(bridge::status))
+        .route("/bridge/context", get(bridge::context_api))
         .route_layer(middleware::from_fn_with_state(state, auth::require_user));
 
     Router::new()
@@ -131,6 +136,13 @@ async fn bootstrap(state: &AppState) -> anyhow::Result<()> {
     }
     if c.seed_demo {
         seed::seed_demo(&state.pool, false).await?;
+    }
+    if let Some(dir) = &c.bridge_dir {
+        bridge::spawn(
+            state.pool.clone(),
+            dir.clone(),
+            Duration::from_secs(c.bridge_interval_secs),
+        )?;
     }
     Ok(())
 }

@@ -13,6 +13,9 @@ pub struct Config {
     pub admin_password: Option<String>,
     pub admin_name: Option<String>,
     pub seed_demo: bool,
+    /// Shared folder for the bridge (see bridge.rs). Off when unset.
+    pub bridge_dir: Option<PathBuf>,
+    pub bridge_interval_secs: u64,
 }
 
 fn flag(name: &str) -> bool {
@@ -49,6 +52,15 @@ impl Config {
                 .filter(|s| !s.is_empty()),
             admin_name: env::var("SAILES_ADMIN_NAME").ok().filter(|s| !s.is_empty()),
             seed_demo: flag("SAILES_SEED_DEMO"),
+            bridge_dir: env::var("SAILES_BRIDGE_DIR")
+                .ok()
+                .filter(|s| !s.is_empty())
+                .map(PathBuf::from),
+            bridge_interval_secs: env::var("SAILES_BRIDGE_INTERVAL_SECS")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(20)
+                .max(2),
         })
     }
 }

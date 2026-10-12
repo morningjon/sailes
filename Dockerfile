@@ -11,6 +11,7 @@ FROM rust:1-bookworm AS server
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY docs ./docs
 RUN cargo build --release -p sailes-server
 
 FROM debian:bookworm-slim

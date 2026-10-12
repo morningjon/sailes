@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { del, get, type OutboxItem } from "../lib/api";
+import { del, get, post, type OutboxItem } from "../lib/api";
 import { formatDateTime } from "../lib/format";
 import { Empty, Loading, Pill, useToast } from "../components/ui";
 
@@ -16,6 +16,14 @@ export function OutboxPage() {
     },
     onError: (e: Error) => toast(e.message, true),
   });
+  const retry = useMutation({
+    mutationFn: (id: string) => post(`/outbox/${id}/retry`),
+    onSuccess: () => {
+      toast("Queued again for the next run");
+      qc.invalidateQueries();
+    },
+    onError: (e: Error) => toast(e.message, true),
+  });
   const items = q.data ?? [];
   const queued = items.filter((i) => i.status === "queued").length;
   return (
@@ -24,8 +32,8 @@ export function OutboxPage() {
         <div>
           <h1>Outbox</h1>
           <div className="sub">
-            Emails you've approved. They send from your own mailbox once Outlook is connected
-            {queued > 0 ? `; ${queued} waiting.` : "."}
+            Emails you've approved. On its next run Claude puts each one in your Outlook drafts, threaded into the
+            conversation, ready for you to send{queued > 0 ? `. ${queued} waiting for the next run.` : "."}
           </div>
         </div>
       </div>
@@ -60,9 +68,15 @@ export function OutboxPage() {
             </div>
             <div className="letter-body">{o.body}</div>
             <div className="composer-foot">
-              {o.status === "queued" && <Pill tone="amber">Waiting to send</Pill>}
+              {o.status === "queued" && <Pill tone="amber">Waiting for the next run</Pill>}
+              {o.status === "drafted" && <Pill tone="purple">In your Outlook drafts</Pill>}
+              {o.status === "drafted" && o.external_url && (
+                <a href={o.external_url} target="_blank" rel="noreferrer" style={{ fontSize: 13 }}>
+                  Open in Outlook
+                </a>
+              )}
               {o.status === "sent" && <Pill tone="green">Sent {formatDateTime(o.sent_at)}</Pill>}
-              {o.status === "failed" && <Pill tone="red">Failed: {o.error}</Pill>}
+              {o.status === "failed" && <Pill tone="red">Couldn't hand over: {o.error}</Pill>}
               {o.deal_id && (
                 <span className="muted" style={{ fontSize: 13 }}>
                   Deal: <Link to={`/deals/${o.deal_id}`}>{o.deal_name}</Link>
@@ -71,6 +85,11 @@ export function OutboxPage() {
               <span className="faint" style={{ marginLeft: "auto", fontSize: 12 }}>
                 Approved {formatDateTime(o.created_at)}
               </span>
+              {o.status === "failed" && (
+                <button className="btn small" onClick={() => retry.mutate(o.id)} disabled={retry.isPending}>
+                  Try again
+                </button>
+              )}
               {o.status === "queued" && (
                 <button className="btn small danger" onClick={() => cancel.mutate(o.id)} disabled={cancel.isPending}>
                   Cancel email
